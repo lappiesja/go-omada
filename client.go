@@ -68,7 +68,7 @@ type Client struct {
 
 func (c *Controller) GetClients() ([]Client, error) {
 
-	path := fmt.Sprintf("api/v2/sites/%s/clients", c.siteId)
+	path := fmt.Sprintf("api/v2/sites/%s/insight/clients", c.siteId)
 	queryParams := map[string]string{
 		"currentPage":     "1",
 		"currentPageSize": "999",
