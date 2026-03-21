@@ -1,4 +1,4 @@
-module github.com/dougbw/go-omada
+module github.com/lappiesja/go-omada
 
 go 1.18
 
