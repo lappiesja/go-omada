@@ -1,8 +1,11 @@
 package omada
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"sort"
 )
 
@@ -67,7 +70,77 @@ type Client struct {
 }
 
 func (c *Controller) GetClients() ([]Client, error) {
+	// Try OAuth endpoint first (6.2.x+)
+	if c.clientId != "" && c.clientSecret != "" {
+		return c.getClientsOAuth()
+	}
+	// Fall back to legacy endpoint (6.1.x and earlier)
+	return c.getClientsLegacy()
+}
 
+func (c *Controller) getClientsOAuth() ([]Client, error) {
+	if err := c.ensureValidToken(); err != nil {
+		return nil, err
+	}
+
+	path := fmt.Sprintf("openapi/v2/%s/sites/%s/clients", c.controllerId, c.siteId)
+	address, err := url.JoinPath(c.baseURL, path)
+	if err != nil {
+		return nil, err
+	}
+
+	body := map[string]int{"page": 1, "pageSize": 999}
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", address, bytes.NewBuffer(bodyJSON))
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "AccessToken="+c.accessToken)
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("status code: %d", res.StatusCode)
+	}
+
+	var clientResponse clientResponse
+	if err := json.NewDecoder(res.Body).Decode(&clientResponse); err != nil {
+		return nil, err
+	}
+
+	if clientResponse.ErrorCode != 0 {
+		return nil, fmt.Errorf("failed to get list of clients: code='%d', message='%s'", clientResponse.ErrorCode, clientResponse.Msg)
+	}
+
+	return parseClients(clientResponse.Result.Data), nil
+}
+
+func parseClients(data []Client) []Client {
+	var clients []Client
+	for _, client := range data {
+		if client.Ip == "" {
+			continue
+		}
+		client.DnsName = makeDNSSafe(client.Name)
+		clients = append(clients, client)
+	}
+
+	sort.Slice(clients, func(i, j int) bool {
+		return clients[i].DnsName < clients[j].DnsName
+	})
+
+	return clients
+}
+
+func (c *Controller) getClientsLegacy() ([]Client, error) {
 	path := fmt.Sprintf("api/v2/sites/%s/insight/clients", c.siteId)
 	queryParams := map[string]string{
 		"currentPage":     "1",
@@ -89,19 +162,5 @@ func (c *Controller) GetClients() ([]Client, error) {
 		return nil, err
 	}
 
-	var clients []Client
-	for _, client := range clientResponse.Result.Data {
-		if client.Ip == "" {
-			continue
-		}
-		client.DnsName = makeDNSSafe(client.Name)
-		clients = append(clients, client)
-	}
-
-	sort.Slice(clients, func(i, j int) bool {
-		return clients[i].DnsName < clients[j].DnsName
-	})
-
-	return clients, nil
-
+	return parseClients(clientResponse.Result.Data), nil
 }

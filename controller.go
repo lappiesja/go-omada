@@ -22,6 +22,11 @@ type Controller struct {
 	Sites        map[string]string
 	user         string
 	pass         string
+	// OAuth fields
+	clientId     string
+	clientSecret string
+	accessToken  string
+	tokenExpiry  time.Time
 }
 
 type ControllerInfo struct {
@@ -205,5 +210,75 @@ func (c *Controller) refreshLogin() error {
 	if err != nil {
 		return err
 	}
+	return nil
+}
+
+func (c *Controller) SetOAuthCredentials(clientId string, clientSecret string) {
+	c.clientId = clientId
+	c.clientSecret = clientSecret
+}
+
+type oauthTokenResponse struct {
+	ErrorCode int    `json:"errorCode"`
+	Msg       string `json:"msg"`
+	Result    struct {
+		AccessToken  string `json:"accessToken"`
+		TokenType    string `json:"tokenType"`
+		ExpiresIn    int    `json:"expiresIn"`
+		RefreshToken string `json:"refreshToken"`
+	} `json:"result"`
+}
+
+func (c *Controller) ensureValidToken() error {
+	if c.accessToken != "" && time.Now().Before(c.tokenExpiry) {
+		return nil
+	}
+	return c.fetchOAuthToken()
+}
+
+func (c *Controller) fetchOAuthToken() error {
+	endpoint, err := url.JoinPath(c.baseURL, "/openapi/authorize/token?grant_type=client_credentials")
+	if err != nil {
+		return err
+	}
+
+	body := map[string]string{
+		"omadacId":      c.controllerId,
+		"client_id":     c.clientId,
+		"client_secret": c.clientSecret,
+	}
+	bodyJSON, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(bodyJSON))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	res, err := c.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+
+	if res.StatusCode != http.StatusOK {
+		return fmt.Errorf("oauth token request failed: status code: %d", res.StatusCode)
+	}
+
+	var tokenResponse oauthTokenResponse
+	if err := json.NewDecoder(res.Body).Decode(&tokenResponse); err != nil {
+		return err
+	}
+
+	if tokenResponse.ErrorCode != 0 {
+		return fmt.Errorf("oauth token error: code='%d', message='%s'", tokenResponse.ErrorCode, tokenResponse.Msg)
+	}
+
+	c.accessToken = tokenResponse.Result.AccessToken
+	// Set expiry to 90% of the actual expiry to refresh before it actually expires
+	c.tokenExpiry = time.Now().Add(time.Duration(float64(tokenResponse.Result.ExpiresIn)*0.9) * time.Second)
+
 	return nil
 }
