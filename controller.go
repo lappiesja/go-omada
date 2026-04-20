@@ -237,7 +237,10 @@ func (c *Controller) ensureValidToken() error {
 }
 
 func (c *Controller) fetchOAuthToken() error {
+	fmt.Println("DEBUG: fetchOAuthToken() called")
+
 	endpoint := c.baseURL + "/openapi/authorize/token?grant_type=client_credentials"
+	fmt.Printf("DEBUG: endpoint = %s\n", endpoint)
 
 	body := map[string]string{
 		"omadacId":      c.controllerId,
@@ -252,6 +255,8 @@ func (c *Controller) fetchOAuthToken() error {
 	if err != nil {
 		return err
 	}
+
+	fmt.Printf("DEBUG: bodyJSON = %s\n", string(bodyJSON))
 
 	req, err := http.NewRequest("POST", endpoint, bytes.NewBuffer(bodyJSON))
 	if err != nil {
