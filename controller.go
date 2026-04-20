@@ -237,10 +237,7 @@ func (c *Controller) ensureValidToken() error {
 }
 
 func (c *Controller) fetchOAuthToken() error {
-	endpoint, err := url.JoinPath(c.baseURL, "/openapi/authorize/token?grant_type=client_credentials")
-	if err != nil {
-		return err
-	}
+	endpoint := c.baseURL + "/openapi/authorize/token?grant_type=client_credentials"
 
 	body := map[string]string{
 		"omadacId":      c.controllerId,
