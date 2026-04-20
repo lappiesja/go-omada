@@ -244,6 +244,10 @@ func (c *Controller) fetchOAuthToken() error {
 		"client_id":     c.clientId,
 		"client_secret": c.clientSecret,
 	}
+	// DEBUG
+	fmt.Printf("DEBUG OAuth Request - omadacId: '%s', client_id: '%s', client_secret: '%s'\n",
+		c.controllerId, c.clientId, c.clientSecret)
+
 	bodyJSON, err := json.Marshal(body)
 	if err != nil {
 		return err
